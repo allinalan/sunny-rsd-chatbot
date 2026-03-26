@@ -1,0 +1,23 @@
+# Virtual environment
+venv/
+
+# ChromaDB vector store (rebuilt automatically on first run)
+.chroma_db/
+
+# Processed files tracker (rebuilt automatically)
+.processed_files.json
+
+# Question log (local only — don't share reps' questions publicly)
+question_log.jsonl
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Mac system files
+.DS_Store
+
+# Environment variables
+.env
+secrets.toml
