@@ -666,7 +666,17 @@ def render_sidebar(collection):
 
         # --- Web Search Toggle ---
         st.markdown("### 🌐 Web Search")
-        if WEB_SEARCH_AVAILABLE:
+
+        # Check if Tavily key exists
+        tavily_key = os.environ.get("TAVILY_API_KEY", "")
+        if not tavily_key:
+            try:
+                tavily_key = st.secrets["TAVILY_API_KEY"]
+            except Exception:
+                tavily_key = ""
+
+        if tavily_key:
+            st.caption(f"🔑 Tavily key detected ({tavily_key[:8]}...)")
             web_search_enabled = st.toggle(
                 "Enable web search",
                 value=st.session_state.get("web_search_enabled", True),
@@ -677,8 +687,17 @@ def render_sidebar(collection):
                 st.caption("🟢 Sunny will search the web when needed.")
             else:
                 st.caption("⚪ Knowledge base only.")
+
+            if st.button("🧪 Test Web Search", use_container_width=True):
+                with st.spinner("Testing Tavily..."):
+                    result = web_search("Mesa Marketplace Mesa Arizona location address")
+                if result:
+                    st.success("✅ Web search working!")
+                    st.caption(result[:300] + "...")
+                else:
+                    st.error("❌ Web search returned no results — check your Tavily API key.")
         else:
-            st.caption("Web search unavailable — check your TAVILY_API_KEY in secrets.")
+            st.error("❌ TAVILY_API_KEY not found in secrets. Add it to Streamlit Cloud secrets.")
 
         st.divider()
 
