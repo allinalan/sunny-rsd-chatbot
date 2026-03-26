@@ -108,7 +108,7 @@ import pypdf
 from docx import Document as DocxDocument
 import csv
 try:
-    from duckduckgo_search import DDGS
+    from tavily import TavilyClient
     WEB_SEARCH_AVAILABLE = True
 except ImportError:
     WEB_SEARCH_AVAILABLE = False
@@ -437,24 +437,28 @@ def retrieve_context(query: str, collection) -> str:
 
 def web_search(query: str, max_results: int = 4) -> str:
     """
-    Search the web using DuckDuckGo and return formatted results.
+    Search the web using Tavily and return formatted results.
     Think of this like giving Sunny a phone to Google something on the spot —
     it supplements the knowledge base when internal docs don't have the answer.
     Returns an empty string if search is unavailable or fails.
     """
     if not WEB_SEARCH_AVAILABLE:
         return ""
+    tavily_key = os.environ.get("TAVILY_API_KEY", st.secrets.get("TAVILY_API_KEY", ""))
+    if not tavily_key:
+        return ""
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=max_results))
-        if not results:
+        client  = TavilyClient(api_key=tavily_key)
+        results = client.search(query, max_results=max_results)
+        docs    = results.get("results", [])
+        if not docs:
             return ""
         parts = []
-        for r in results:
-            title = r.get("title", "")
-            body  = r.get("body", "")
-            href  = r.get("href", "")
-            parts.append(f"**{title}**\n{body}\n({href})")
+        for r in docs:
+            title   = r.get("title", "")
+            content = r.get("content", "")
+            url     = r.get("url", "")
+            parts.append(f"**{title}**\n{content}\n({url})")
         return "\n\n---\n\n".join(parts)
     except Exception:
         return ""
