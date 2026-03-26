@@ -107,6 +107,11 @@ from pathlib import Path
 import pypdf
 from docx import Document as DocxDocument
 import csv
+try:
+    from duckduckgo_search import DDGS
+    WEB_SEARCH_AVAILABLE = True
+except ImportError:
+    WEB_SEARCH_AVAILABLE = False
 
 # ============================================================
 # PAGE CONFIG — Must be the very first Streamlit call
@@ -427,6 +432,35 @@ def retrieve_context(query: str, collection) -> str:
 
 
 # ============================================================
+# WEB SEARCH — DuckDuckGo (no API key required)
+# ============================================================
+
+def web_search(query: str, max_results: int = 4) -> str:
+    """
+    Search the web using DuckDuckGo and return formatted results.
+    Think of this like giving Sunny a phone to Google something on the spot —
+    it supplements the knowledge base when internal docs don't have the answer.
+    Returns an empty string if search is unavailable or fails.
+    """
+    if not WEB_SEARCH_AVAILABLE:
+        return ""
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=max_results))
+        if not results:
+            return ""
+        parts = []
+        for r in results:
+            title = r.get("title", "")
+            body  = r.get("body", "")
+            href  = r.get("href", "")
+            parts.append(f"**{title}**\n{body}\n({href})")
+        return "\n\n---\n\n".join(parts)
+    except Exception:
+        return ""
+
+
+# ============================================================
 # ESCALATION DETECTION
 # ============================================================
 
@@ -477,6 +511,7 @@ def get_response(
     history: list[dict],
     api_key: str,
     collection,
+    enable_web_search: bool = False,
 ) -> tuple[str, bool]:
     """
     Build a context-enriched prompt and call Claude.
@@ -499,6 +534,18 @@ def get_response(
             "\n\nNote: No matching knowledge base content was found for this query. "
             "Be transparent about this — suggest the rep check with their manager."
         )
+
+    # Web search — runs when enabled and KB didn't find a strong match
+    if enable_web_search and WEB_SEARCH_AVAILABLE:
+        web_results = web_search(user_message)
+        if web_results:
+            system += (
+                "\n\n=== WEB SEARCH RESULTS (supplemental — use if KB has no answer) ===\n"
+                + web_results
+                + "\n\nIMPORTANT: Prefer knowledge base answers over web results for anything "
+                "RSD-specific. Use web results only for general questions the KB doesn't cover. "
+                "If using web results, mention briefly that you pulled from a web search."
+            )
 
     if escalated:
         system += (
@@ -606,6 +653,24 @@ def render_sidebar(collection):
             with open(dest, "wb") as f:
                 f.write(uploaded.getbuffer())
             st.success(f"📁 Saved **{uploaded.name}**. Click **Refresh Knowledge Base** to index it.")
+
+        st.divider()
+
+        # --- Web Search Toggle ---
+        st.markdown("### 🌐 Web Search")
+        if WEB_SEARCH_AVAILABLE:
+            web_search_enabled = st.toggle(
+                "Enable web search",
+                value=st.session_state.get("web_search_enabled", False),
+                help="When on, Sunny will search the web for questions not covered in the knowledge base.",
+            )
+            st.session_state.web_search_enabled = web_search_enabled
+            if web_search_enabled:
+                st.caption("🟢 Sunny will search the web when needed.")
+            else:
+                st.caption("⚪ Knowledge base only.")
+        else:
+            st.caption("Install `duckduckgo-search` to enable web search.")
 
         st.divider()
 
@@ -767,7 +832,8 @@ Type your question below and I'll get you an answer right away! 🚀
                     # Pass history *without* the current message (it's already in `messages`)
                     history = st.session_state.messages[:-1]
                     answer, escalated = get_response(
-                        prompt, history, st.session_state.api_key, collection
+                        prompt, history, st.session_state.api_key, collection,
+                        enable_web_search=st.session_state.get("web_search_enabled", False),
                     )
 
                     st.markdown(answer)

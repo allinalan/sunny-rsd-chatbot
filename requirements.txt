@@ -16,5 +16,8 @@ sentence-transformers>=3.0.0   # Embedding model (downloads ~80 MB on first run)
 pypdf>=4.2.0                   # PDF reading
 python-docx>=1.1.0             # Word document reading
 
+# ── Web search ───────────────────────────────────────────────
+duckduckgo-search>=6.0.0       # Free web search, no API key required
+
 # ── Utilities (usually already installed, listed for clarity) ─
 # json, csv, hashlib, os, pathlib — all part of Python stdlib
