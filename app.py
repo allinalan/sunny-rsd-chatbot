@@ -438,12 +438,14 @@ def web_search(query: str, max_results: int = 4) -> str:
     Returns an empty string if search is unavailable or fails.
     """
     try:
-        tavily_key = os.environ.get("TAVILY_API_KEY", "")
+        tavily_key = st.session_state.get("tavily_key", "")
+        if not tavily_key:
+            tavily_key = os.environ.get("TAVILY_API_KEY", "")
         if not tavily_key:
             try:
                 tavily_key = st.secrets["TAVILY_API_KEY"]
             except Exception:
-                return ""
+                pass
         if not tavily_key:
             return ""
 
@@ -667,8 +669,24 @@ def render_sidebar(collection):
         # --- Web Search Toggle ---
         st.markdown("### 🌐 Web Search")
 
-        # Check if Tavily key exists
-        tavily_key = os.environ.get("TAVILY_API_KEY", "")
+        # --- Tavily API Key input ---
+        st.markdown("### 🔍 Tavily API Key")
+        tavily_input = st.text_input(
+            "Tavily API Key",
+            type="password",
+            value=st.session_state.get("tavily_key", ""),
+            placeholder="tvly-...",
+            help="Get your free key at tavily.com",
+            label_visibility="collapsed",
+        )
+        if tavily_input:
+            st.session_state.tavily_key = tavily_input
+            st.success("Tavily key saved ✓", icon="🔍")
+
+        # Check if Tavily key exists (sidebar input > secrets > env var)
+        tavily_key = st.session_state.get("tavily_key", "")
+        if not tavily_key:
+            tavily_key = os.environ.get("TAVILY_API_KEY", "")
         if not tavily_key:
             try:
                 tavily_key = st.secrets["TAVILY_API_KEY"]
