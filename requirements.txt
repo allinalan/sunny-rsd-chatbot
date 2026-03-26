@@ -17,7 +17,7 @@ pypdf>=4.2.0                   # PDF reading
 python-docx>=1.1.0             # Word document reading
 
 # ── Web search ───────────────────────────────────────────────
-tavily-python>=0.3.0           # Web search API (get free key at tavily.com)
+# Web search uses Tavily API via requests (built-in) — add TAVILY_API_KEY to secrets
 
 # ── Utilities (usually already installed, listed for clarity) ─
 # json, csv, hashlib, os, pathlib — all part of Python stdlib

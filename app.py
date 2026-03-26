@@ -107,11 +107,8 @@ from pathlib import Path
 import pypdf
 from docx import Document as DocxDocument
 import csv
-try:
-    from tavily import TavilyClient
-    WEB_SEARCH_AVAILABLE = True
-except ImportError:
-    WEB_SEARCH_AVAILABLE = False
+import requests
+WEB_SEARCH_AVAILABLE = True
 
 # ============================================================
 # PAGE CONFIG — Must be the very first Streamlit call
@@ -437,22 +434,29 @@ def retrieve_context(query: str, collection) -> str:
 
 def web_search(query: str, max_results: int = 4) -> str:
     """
-    Search the web using Tavily and return formatted results.
-    Think of this like giving Sunny a phone to Google something on the spot —
-    it supplements the knowledge base when internal docs don't have the answer.
+    Search the web using Tavily API directly via HTTP (no extra package needed).
     Returns an empty string if search is unavailable or fails.
     """
-    if not WEB_SEARCH_AVAILABLE:
-        return ""
-    tavily_key = os.environ.get("TAVILY_API_KEY", st.secrets.get("TAVILY_API_KEY", ""))
-    if not tavily_key:
-        return ""
     try:
-        client  = TavilyClient(api_key=tavily_key)
-        results = client.search(query, max_results=max_results)
-        docs    = results.get("results", [])
+        tavily_key = os.environ.get("TAVILY_API_KEY", "")
+        if not tavily_key:
+            try:
+                tavily_key = st.secrets["TAVILY_API_KEY"]
+            except Exception:
+                return ""
+        if not tavily_key:
+            return ""
+
+        response = requests.post(
+            "https://api.tavily.com/search",
+            json={"api_key": tavily_key, "query": query, "max_results": max_results},
+            timeout=10,
+        )
+        data = response.json()
+        docs = data.get("results", [])
         if not docs:
             return ""
+
         parts = []
         for r in docs:
             title   = r.get("title", "")
@@ -674,7 +678,7 @@ def render_sidebar(collection):
             else:
                 st.caption("⚪ Knowledge base only.")
         else:
-            st.caption("Install `duckduckgo-search` to enable web search.")
+            st.caption("Web search unavailable — check your TAVILY_API_KEY in secrets.")
 
         st.divider()
 
@@ -837,7 +841,7 @@ Type your question below and I'll get you an answer right away! 🚀
                     history = st.session_state.messages[:-1]
                     answer, escalated = get_response(
                         prompt, history, st.session_state.api_key, collection,
-                        enable_web_search=st.session_state.get("web_search_enabled", False),
+                        enable_web_search=st.session_state.get("web_search_enabled", True),
                     )
 
                     st.markdown(answer)
