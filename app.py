@@ -661,7 +661,7 @@ def render_sidebar(collection):
         if WEB_SEARCH_AVAILABLE:
             web_search_enabled = st.toggle(
                 "Enable web search",
-                value=st.session_state.get("web_search_enabled", False),
+                value=st.session_state.get("web_search_enabled", True),
                 help="When on, Sunny will search the web for questions not covered in the knowledge base.",
             )
             st.session_state.web_search_enabled = web_search_enabled
