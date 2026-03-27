@@ -83,15 +83,22 @@ ESCALATION_TRIGGERS = [
 # ============================================================
 
 CONVERSATION_MEMORY   = 10    # Number of past messages to include as context
-CHUNK_SIZE_WORDS      = 150   # Target words per knowledge base chunk (smaller = better for RoR name lookups)
-CHUNK_OVERLAP_WORDS   = 20    # Word overlap between adjacent chunks
-TOP_K_RESULTS         = 8     # How many knowledge base chunks to retrieve per query
+CHUNK_SIZE_WORDS      = 300   # Target words per knowledge base chunk
+CHUNK_OVERLAP_WORDS   = 30    # Word overlap between adjacent chunks
+TOP_K_RESULTS         = 6     # How many knowledge base chunks to retrieve per query
 MAX_RESPONSE_TOKENS   = 1024  # Max tokens in Claude's response
 
 KNOWLEDGE_BASE_DIR      = "knowledge_base"
 CHROMA_DB_DIR           = ".chroma_db"
 QUESTION_LOG_FILE       = "question_log.jsonl"
 PROCESSED_FILES_TRACKER = ".processed_files.json"
+
+# Files in knowledge_base/ that should NOT be embedded into ChromaDB
+# (large lookup tables handled separately via direct search)
+KNOWLEDGE_BASE_SKIP_FILES = {"ROR_Spring_2026.txt", "ROR Spring 2026.xlsx - Spring ROR.pdf"}
+
+# RoR CSV — loaded directly for fast name/address lookup (bypasses ChromaDB entirely)
+ROR_CSV_FILE = "rsd_ror.csv"
 
 SUPPORTED_FILE_TYPES = [".pdf", ".docx", ".txt", ".md", ".csv"]
 CLAUDE_MODEL         = "claude-sonnet-4-20250514"
@@ -378,6 +385,8 @@ def process_knowledge_base(collection) -> dict:
     for fp in kb_path.rglob("*"):
         if fp.suffix.lower() not in SUPPORTED_FILE_TYPES:
             continue
+        if fp.name in KNOWLEDGE_BASE_SKIP_FILES:
+            continue  # RoR and other large lookup tables handled via direct search
 
         fp_str    = str(fp)
         file_hash = get_file_hash(fp_str)
@@ -521,6 +530,82 @@ def load_log() -> list[dict]:
 # AI RESPONSE — RAG + Claude
 # ============================================================
 
+# ============================================================
+# RoR DIRECT LOOKUP — Bypasses ChromaDB for instant name/address search
+# ============================================================
+
+@st.cache_data(show_spinner=False)
+def load_ror() -> list[dict]:
+    """Load the RoR CSV into memory once and cache it. Returns list of row dicts."""
+    ror_path = Path(ROR_CSV_FILE)
+    if not ror_path.exists():
+        return []
+    rows = []
+    try:
+        with open(ror_path, "r", encoding="utf-8", errors="ignore") as f:
+            for row in csv.DictReader(f):
+                first = (row.get("First Name") or "").strip()
+                last  = (row.get("Last Name") or "").strip()
+                rep   = (row.get("Rep Name") or "").strip()
+                addr  = (row.get("Address") or "").strip()
+                city  = (row.get("City") or "").strip()
+                state = (row.get("State") or "").strip()
+                zip_  = (row.get("Zip") or "").strip()
+                if first and last and rep:
+                    rows.append({
+                        "full_name": f"{first} {last}".lower(),
+                        "first": first, "last": last, "rep": rep,
+                        "address": addr.lower(), "city": city.lower(),
+                        "state": state.strip().lower(), "zip": zip_,
+                        "display": f"Customer: {first} {last} | Address: {addr}, {city}, {state} {zip_} | Rep: {rep}"
+                    })
+    except Exception:
+        pass
+    return rows
+
+
+def lookup_ror(query: str, max_results: int = 5) -> str:
+    """
+    Search the RoR by customer name or address using direct string matching.
+    Returns a formatted string for injection into the system prompt, or empty string.
+    """
+    ror_data = load_ror()
+    if not ror_data:
+        return ""
+
+    q = query.lower()
+    # Extract meaningful search tokens (skip short/common words)
+    tokens = [t for t in q.split() if len(t) > 2]
+    if not tokens:
+        return ""
+
+    scored = []
+    for row in ror_data:
+        score = 0
+        for token in tokens:
+            if token in row["full_name"]:
+                score += 3   # Name match is strongest signal
+            if token in row["address"]:
+                score += 2   # Address match
+            if token in row["city"]:
+                score += 1
+        if score > 0:
+            scored.append((score, row["display"]))
+
+    if not scored:
+        return ""
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = [r[1] for r in scored[:max_results]]
+
+    return (
+        "=== RoR LOOKUP RESULTS ===\n"
+        + "\n".join(top)
+        + "\n\nUse the above to answer questions about customer ownership. "
+          "State the rep's name clearly."
+    )
+
+
 def get_response(
     user_message: str,
     history: list[dict],
@@ -532,19 +617,23 @@ def get_response(
     Build a context-enriched prompt and call Claude.
     Returns (response_text, escalated_flag).
     """
-    # 1. Pull relevant knowledge base snippets
-    context  = retrieve_context(user_message, collection)
+    # 1. Pull relevant knowledge base snippets + RoR direct lookup
+    context   = retrieve_context(user_message, collection)
+    ror_match = lookup_ror(user_message)
     escalated = is_escalation(user_message)
 
     # 2. Build the system prompt
     system = SYSTEM_PROMPT
+
+    if ror_match:
+        system += "\n\n" + ror_match
 
     if context:
         system += (
             "\n\n=== KNOWLEDGE BASE (use this to answer the question) ===\n"
             + context
         )
-    else:
+    elif not ror_match:
         system += (
             "\n\nNote: No matching knowledge base content was found for this query. "
             "Be transparent about this — suggest the rep check with their manager."
