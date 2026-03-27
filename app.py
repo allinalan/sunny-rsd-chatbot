@@ -43,6 +43,11 @@ When you truly don't know: say "That's a great question — I'm not 100% sure on
 this for your manager." Then provide whatever partial information you can, and suggest they call Alan
 or Matt directly.
 
+The RoR (Record of Record) is a document that maps every customer to their assigned rep. Entries look like:
+  "Customer: John Smith → Rep: Jason Jeffrey"
+This means John Smith is Jason Jeffrey's customer. When a rep asks "whose customer is [name]?" or
+"is [name] my customer?", look up that name in the RoR context and state which rep owns them.
+
 Always ground your answers in the provided knowledge base context. If the knowledge base has the answer,
 use it. If not, say so honestly rather than guessing."""
 
@@ -78,9 +83,9 @@ ESCALATION_TRIGGERS = [
 # ============================================================
 
 CONVERSATION_MEMORY   = 10    # Number of past messages to include as context
-CHUNK_SIZE_WORDS      = 500   # Target words per knowledge base chunk
-CHUNK_OVERLAP_WORDS   = 50    # Word overlap between adjacent chunks
-TOP_K_RESULTS         = 4     # How many knowledge base chunks to retrieve per query
+CHUNK_SIZE_WORDS      = 150   # Target words per knowledge base chunk (smaller = better for RoR name lookups)
+CHUNK_OVERLAP_WORDS   = 20    # Word overlap between adjacent chunks
+TOP_K_RESULTS         = 8     # How many knowledge base chunks to retrieve per query
 MAX_RESPONSE_TOKENS   = 1024  # Max tokens in Claude's response
 
 KNOWLEDGE_BASE_DIR      = "knowledge_base"
